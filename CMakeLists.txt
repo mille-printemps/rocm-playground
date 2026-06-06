@@ -22,4 +22,4 @@ endif()
 
 # Subprojects
 add_subdirectory(fundamentals)
-add_subdirectory(projects)
+# add_subdirectory(projects)
