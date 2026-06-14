@@ -28,6 +28,10 @@ if(rocblas_FOUND)
     message(STATUS "rocBLAS found")
 endif()
 
+add_library(rocm_common INTERFACE)
+target_include_directories(rocm_common INTERFACE ${CMAKE_SOURCE_DIR}/include)
+target_compile_features(rocm_common INTERFACE cxx_std_23)
+
 # Subprojects
 add_subdirectory(fundamentals)
 # add_subdirectory(projects)
