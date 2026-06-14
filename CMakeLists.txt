@@ -9,6 +9,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Find HIP — provided by ROCm installation
 find_package(hip REQUIRED)
 
+# Detect if we're on NVIDIA hardware and set HIP platform accordingly
+if(DEFINED ENV{HIP_PLATFORM} AND "$ENV{HIP_PLATFORM}" STREQUAL "nvidia")
+    message(STATUS "HIP platform: NVIDIA (CUDA backend)")
+    add_compile_definitions(__HIP_PLATFORM_NVIDIA__)
+else()
+    message(STATUS "HIP platform: AMD (ROCm backend)")
+endif()
+
 # Optionally find rocPRIM and rocBLAS
 find_package(rocprim QUIET)
 find_package(rocblas QUIET)
