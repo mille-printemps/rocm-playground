@@ -17,6 +17,31 @@ else()
     message(STATUS "HIP platform: AMD (ROCm backend)")
 endif()
 
+# Use this instead of add_executable directly
+# Usage: add_hip_executable(vector_add vector_add.hip)
+function(add_hip_executable target)
+    set(sources ${ARGN})
+
+    add_executable(${target} ${sources})
+
+    if(HIP_PLATFORM_NVIDIA)
+        # NVIDIA: tell nvcc to treat .hip as CUDA source
+        set_source_files_properties(${sources}
+            PROPERTIES
+                LANGUAGE CUDA
+                COMPILE_OPTIONS "-x;cu"
+        )
+    else()
+        # AMD: hipcc handles .hip natively
+        set_source_files_properties(${sources}
+            PROPERTIES LANGUAGE CXX)
+        target_link_libraries(${target} PRIVATE hip::device)
+    endif()
+
+    target_link_libraries(${target} PRIVATE rocm_common)
+    target_compile_features(${target} PUBLIC cxx_std_23)
+endfunction()
+
 # Optionally find rocPRIM and rocBLAS
 find_package(rocprim QUIET)
 find_package(rocblas QUIET)
