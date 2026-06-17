@@ -1,61 +1,45 @@
 cmake_minimum_required(VERSION 3.21)
-project(rocm-playground LANGUAGES CXX)
+project(rocm-playground LANGUAGES CXX CUDA)
 
-# ROCm / HIP setup
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Find HIP — provided by ROCm installation
-find_package(hip REQUIRED)
-
-# Detect if we're on NVIDIA hardware and set HIP platform accordingly
+# Platform detection
 if(DEFINED ENV{HIP_PLATFORM} AND "$ENV{HIP_PLATFORM}" STREQUAL "nvidia")
-    message(STATUS "HIP platform: NVIDIA (CUDA backend)")
-    add_compile_definitions(__HIP_PLATFORM_NVIDIA__)
+    set(HIP_PLATFORM_NVIDIA TRUE)
+    message(STATUS "Building for NVIDIA (CUDA backend)")
 else()
-    message(STATUS "HIP platform: AMD (ROCm backend)")
+    set(HIP_PLATFORM_NVIDIA FALSE)
+    message(STATUS "Building for AMD (ROCm backend)")
+    find_package(hip REQUIRED)
+    find_package(rocprim QUIET)
+    find_package(rocblas QUIET)
 endif()
 
-# Use this instead of add_executable directly
-# Usage: add_hip_executable(vector_add vector_add.hip)
+# Shared headers
+add_library(rocm_common INTERFACE)
+target_include_directories(rocm_common INTERFACE ${CMAKE_SOURCE_DIR}/include)
+target_compile_features(rocm_common INTERFACE cxx_std_23)
+
+# Helper function
 function(add_hip_executable target)
     set(sources ${ARGN})
-
     add_executable(${target} ${sources})
 
     if(HIP_PLATFORM_NVIDIA)
-        # NVIDIA: tell nvcc to treat .hip as CUDA source
         set_source_files_properties(${sources}
             PROPERTIES
                 LANGUAGE CUDA
-                COMPILE_OPTIONS "-x;cu"
-        )
+                COMPILE_OPTIONS "-x;cu")
     else()
-        # AMD: hipcc handles .hip natively
         set_source_files_properties(${sources}
             PROPERTIES LANGUAGE CXX)
         target_link_libraries(${target} PRIVATE hip::device)
     endif()
 
     target_link_libraries(${target} PRIVATE rocm_common)
-    target_compile_features(${target} PUBLIC cxx_std_23)
 endfunction()
-
-# Optionally find rocPRIM and rocBLAS
-find_package(rocprim QUIET)
-find_package(rocblas QUIET)
-
-if(rocprim_FOUND)
-    message(STATUS "rocPRIM found")
-endif()
-if(rocblas_FOUND)
-    message(STATUS "rocBLAS found")
-endif()
-
-add_library(rocm_common INTERFACE)
-target_include_directories(rocm_common INTERFACE ${CMAKE_SOURCE_DIR}/include)
-target_compile_features(rocm_common INTERFACE cxx_std_23)
 
 # Subprojects
 add_subdirectory(fundamentals)

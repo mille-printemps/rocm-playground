@@ -7,14 +7,12 @@
 set -e
 
 BUILD_DIR="build"
-ROCM_PATH="${ROCM_PATH:-$(dirname $(dirname $(which hipcc)))}"
 
 # Detect platform and set compiler
 if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
     export HIP_PLATFORM=nvidia
     echo "==> Detected NVIDIA GPU — targeting CUDA backend"
 
-    # Find nvcc
     COMPILER=$(which nvcc 2>/dev/null || echo "")
     if [ -z "$COMPILER" ]; then
         echo "Error: nvcc not found. Is the CUDA toolkit installed?"
@@ -26,14 +24,20 @@ else
     export HIP_PLATFORM=amd
     echo "==> Targeting AMD ROCm backend"
 
-    # Find hipcc
-    ROCM_PATH="${ROCM_PATH:-$(dirname $(dirname $(which hipcc)))}"
-    COMPILER="$ROCM_PATH/bin/hipcc"
-    if [ ! -f "$COMPILER" ]; then
-        echo "Error: hipcc not found at $COMPILER"
+    # Find hipcc dynamically — don't assume /opt/rocm/bin
+    COMPILER=$(which hipcc 2>/dev/null || echo "")
+    if [ -z "$COMPILER" ]; then
+        echo "Error: hipcc not found in PATH."
+        echo "Try: find / -name hipcc 2>/dev/null"
         exit 1
     fi
     echo "    Compiler: $COMPILER"
+
+    if [ "$HIP_PLATFORM" = "amd" ]; then
+        # Derive ROCm root from hipcc location (strip /bin/hipcc)
+        ROCM_PATH=$(dirname $(dirname "$COMPILER"))
+        echo "    ROCm path: $ROCM_PATH"
+    fi
 fi
 
 # Clean
@@ -49,6 +53,7 @@ cmake -B "$BUILD_DIR" \
     -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_COMPILER="$COMPILER" \
+    -DCMAKE_PREFIX_PATH="${ROCM_PATH:-/opt/rocm}" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DHIP_PLATFORM="${HIP_PLATFORM}"
 
