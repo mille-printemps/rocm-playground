@@ -1,26 +1,42 @@
 cmake_minimum_required(VERSION 3.21)
-project(rocm-playground LANGUAGES CXX CUDA)
 
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Platform detection
+# Platform detection (must happen BEFORE project())
 if(DEFINED ENV{HIP_PLATFORM} AND "$ENV{HIP_PLATFORM}" STREQUAL "nvidia")
     set(HIP_PLATFORM_NVIDIA TRUE)
-    message(STATUS "Building for NVIDIA (CUDA backend)")
+    project(rocm-playground LANGUAGES CXX CUDA)
 else()
     set(HIP_PLATFORM_NVIDIA FALSE)
+    project(rocm-playground LANGUAGES CXX)
+endif()
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# CUDA settings (NVIDIA only)
+if(HIP_PLATFORM_NVIDIA)
+    set(CMAKE_CUDA_STANDARD 20)  # CUDA typically lags behind C++ standard support
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+endif()
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Find ROCm packages (AMD only)
+if(NOT HIP_PLATFORM_NVIDIA)
     message(STATUS "Building for AMD (ROCm backend)")
     find_package(hip REQUIRED)
     find_package(rocprim QUIET)
     find_package(rocblas QUIET)
+else()
+    message(STATUS "Building for NVIDIA (CUDA backend)")
 endif()
 
 # Shared headers
 add_library(rocm_common INTERFACE)
 target_include_directories(rocm_common INTERFACE ${CMAKE_SOURCE_DIR}/include)
-target_compile_features(rocm_common INTERFACE cxx_std_23)
+
+# Set C++ standard only (not CUDA) — CUDA targets handle it separately
+target_compile_features(rocm_common INTERFACE cxx_std_20)
 
 # Helper function
 function(add_hip_executable target)
@@ -28,11 +44,22 @@ function(add_hip_executable target)
     add_executable(${target} ${sources})
 
     if(HIP_PLATFORM_NVIDIA)
+        # NVIDIA: set CUDA properties
         set_source_files_properties(${sources}
             PROPERTIES
                 LANGUAGE CUDA
-                COMPILE_OPTIONS "-x;cu")
+                CUDA_ARCHITECTURES "75;80;86;89")
+
+        # Set CUDA standard on the target explicitly
+        # (don't rely on propagated C++ standard)
+        set_target_properties(${target} PROPERTIES
+            CUDA_STANDARD 20
+            CUDA_STANDARD_REQUIRED ON)
+
+        target_compile_options(${target} PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:-x=cu>)
     else()
+        # AMD: set C++ properties and link hip
         set_source_files_properties(${sources}
             PROPERTIES LANGUAGE CXX)
         target_link_libraries(${target} PRIVATE hip::device)
