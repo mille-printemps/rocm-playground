@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-# Platform detection (must happen BEFORE project())
+# Platform detection
 if(DEFINED ENV{HIP_PLATFORM} AND "$ENV{HIP_PLATFORM}" STREQUAL "nvidia")
     set(HIP_PLATFORM_NVIDIA TRUE)
     project(rocm-playground LANGUAGES CXX CUDA)
@@ -44,14 +44,13 @@ function(add_hip_executable target)
     add_executable(${target} ${sources})
 
     if(HIP_PLATFORM_NVIDIA)
-        # NVIDIA: set CUDA properties
+        # NVIDIA
         set_source_files_properties(${sources}
             PROPERTIES
                 LANGUAGE CUDA
                 CUDA_ARCHITECTURES "75;80;86;89")
 
         # Set CUDA standard on the target explicitly
-        # (don't rely on propagated C++ standard)
         set_target_properties(${target} PROPERTIES
             CUDA_STANDARD 20
             CUDA_STANDARD_REQUIRED ON)
@@ -59,7 +58,7 @@ function(add_hip_executable target)
         target_compile_options(${target} PRIVATE
             $<$<COMPILE_LANGUAGE:CUDA>:-x=cu>)
     else()
-        # AMD: set C++ properties and link hip
+        # AMD
         set_source_files_properties(${sources}
             PROPERTIES LANGUAGE CXX)
         target_link_libraries(${target} PRIVATE hip::device)

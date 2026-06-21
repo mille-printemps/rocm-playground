@@ -15,8 +15,8 @@ __global__ void blockReduce(const float* input,
     int tid    = threadIdx.x;
     int global = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Grid-stride load: each thread accumulates every element assigned to it
-    // before the shared-memory reduction. This lets a single launch reduce
+    // Each thread accumulates every element assigned to it before
+    // the shared-memory reduction. This lets a single launch reduce
     // n > blockDim.x * gridDim.x elements correctly.
     float sum = 0.0f;
     for (int i = global; i < n; i += blockDim.x * gridDim.x) {
