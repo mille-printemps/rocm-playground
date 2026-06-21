@@ -51,7 +51,7 @@ Void run() {
     // Verify
     for (int i = 0; i < N; i++) {
         if (h_c[i] != 3.0f) {
-            return std::unexpected(HipError{
+            return compat::unexpected(HipError{
                 .code    = hipErrorUnknown,
                 .message = "Mismatch at index "
                          + std::to_string(i)

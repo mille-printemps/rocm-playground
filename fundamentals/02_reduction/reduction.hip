@@ -15,14 +15,25 @@ __global__ void blockReduce(const float* input,
     int tid    = threadIdx.x;
     int global = blockIdx.x * blockDim.x + threadIdx.x;
 
-    sdata[tid] = (global < n) ? input[global] : 0.0f;
+    // Each thread accumulates every element assigned to it before
+    // the shared-memory reduction. This lets a single launch reduce
+    // n > blockDim.x * gridDim.x elements correctly.
+    float sum = 0.0f;
+    for (int i = global; i < n; i += blockDim.x * gridDim.x) {
+        sum += input[i];
+    }
+    sdata[tid] = sum;
     __syncthreads();
 
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (tid < stride) {
-            sdata[tid] += sdata[tid + stride];
+    // Tree reduction in shared memory. Using a ceil-halving step bounded by
+    // the active count makes this correct for any blockDim.x, not just powers of two
+    for (unsigned int active = blockDim.x; active > 1; ) {
+        unsigned int half = (active + 1) / 2;
+        if (tid < active - half) {
+            sdata[tid] += sdata[tid + half];
         }
         __syncthreads();
+        active = half;
     }
 
     if (tid == 0) {
@@ -90,7 +101,7 @@ Void run() {
     float tol  = expected * 1e-5f;
 
     if (diff > tol) {
-        return std::unexpected(HipError{
+        return compat::unexpected(HipError{
             .code    = hipErrorUnknown,
             .message = "Result mismatch: GPU=" + std::to_string(gpu_sum)
                      + " CPU="                 + std::to_string(expected)

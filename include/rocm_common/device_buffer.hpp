@@ -3,6 +3,7 @@
 #include <hip/hip_runtime.h>
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 #include "rocm_common/hip_util.hpp"
 
 // DeviceBuffer

@@ -1,9 +1,87 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include <expected>
-#include <string>
+#include <iostream>
+#include <optional>
 #include <source_location>
+#include <string>
+#include <utility>
+#include <variant>
+
+// expected / unexpected — minimal C++20 backport
+//
+// CUDA's toolchain targets C++20, which predates std::expected (C++23).
+// This provides a small drop-in subset of the std::expected API
+namespace compat {
+
+// unexpected — wraps an error value (mirrors std::unexpected)
+template <typename E>
+class unexpected {
+public:
+    explicit unexpected(E e) : error_(std::move(e)) {}
+
+    const E& error() const&  { return error_; }
+    E&       error() &       { return error_; }
+    E&&      error() &&      { return std::move(error_); }
+
+private:
+    E error_;
+};
+
+// Deduction guide so `unexpected(err)` deduces E (mirrors std::unexpected)
+template <typename E>
+unexpected(E) -> unexpected<E>;
+
+// expected<T, E> — holds either a value of type T or an error of type E
+template <typename T, typename E>
+class expected {
+public:
+    // Implicit construction from a value (mirrors std::expected)
+    expected(T value) : data_(std::in_place_index<0>, std::move(value)) {}
+
+    // Construction from an error
+    expected(unexpected<E> unex)
+        : data_(std::in_place_index<1>, std::move(unex.error())) {}
+
+    bool has_value() const { return data_.index() == 0; }
+    explicit operator bool() const { return has_value(); }
+
+    T&        operator*() &      { return std::get<0>(data_); }
+    const T&  operator*() const& { return std::get<0>(data_); }
+    T&&       operator*() &&     { return std::move(std::get<0>(data_)); }
+
+    T&        value() &      { return std::get<0>(data_); }
+    const T&  value() const& { return std::get<0>(data_); }
+
+    const E& error() const&  { return std::get<1>(data_); }
+    E&       error() &       { return std::get<1>(data_); }
+    E&&      error() &&      { return std::move(std::get<1>(data_)); }
+
+private:
+    std::variant<T, E> data_;
+};
+
+// expected<void, E> — success carries no value
+template <typename E>
+class expected<void, E> {
+public:
+    expected() = default;
+    expected(unexpected<E> unex) : error_(std::move(unex.error())) {}
+
+    bool has_value() const { return !error_.has_value(); }
+    explicit operator bool() const { return has_value(); }
+
+    void value() const {}
+
+    const E& error() const&  { return *error_; }
+    E&       error() &       { return *error_; }
+    E&&      error() &&      { return std::move(*error_); }
+
+private:
+    std::optional<E> error_;
+};
+
+} // namespace compat
 
 // Error type
 struct HipError {
@@ -24,7 +102,7 @@ struct HipError {
 
 // Result types
 template <typename T = void>
-using Result = std::expected<T, HipError>;
+using Result = compat::expected<T, HipError>;
 
 using Void = Result<>;
 
@@ -33,7 +111,7 @@ inline Void hipCheck(
         hipError_t err,
         std::source_location loc = std::source_location::current()) {
     if (err != hipSuccess) {
-        return std::unexpected(HipError::from(err, loc));
+        return compat::unexpected(HipError::from(err, loc));
     }
     return {};
 }
@@ -46,7 +124,7 @@ Result<T*> hipAlloc(
     T* ptr = nullptr;
     hipError_t err = hipMalloc(&ptr, count * sizeof(T));
     if (err != hipSuccess) {
-        return std::unexpected(HipError::from(err, loc));
+        return compat::unexpected(HipError::from(err, loc));
     }
     return ptr;
 }
@@ -75,7 +153,7 @@ Result<T*> hipAlloc(
     do {                                                        \
         auto _result = (expr);                                  \
         if (!_result) {                                         \
-            return std::unexpected(_result.error());            \
+            return compat::unexpected(_result.error());         \
         }                                                       \
     } while (0)
 
@@ -86,6 +164,6 @@ Result<T*> hipAlloc(
 #define TRY_VAL(name, expr)                                     \
     auto _res_##name = (expr);                                  \
     if (!_res_##name) {                                         \
-        return std::unexpected(_res_##name.error());            \
+        return compat::unexpected(_res_##name.error());         \
     }                                                           \
     auto name = std::move(*_res_##name)
